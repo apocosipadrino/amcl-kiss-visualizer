@@ -15,6 +15,7 @@ One robot, one map, one stream of motion commands and laser scans. Both filters 
 
 - **Tracking**: both filters follow the robot well, but AMCL needs far fewer particles once confident (watch the particle counts in the stats lines).
 - **Kidnap**: press **Kidnap robot** to teleport the robot at least 4 m away. The simple filter usually stays lost — with no way to re-seed hypotheses, its collapsed particle cloud never finds the robot again. AMCL's particle count jumps, injection rises, and the estimate re-converges.
+- **Scoreboard**: live means for tracking error and particles used, plus steps to recover after a kidnap — the measured version of the contrast.
 
 ## Controls
 

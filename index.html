@@ -54,6 +54,10 @@ body{margin:0;padding:16px;background:var(--hatch-widget-bg);font-family:system-
     <label style="display:flex;justify-content:space-between;margin-top:6px;"><span>Sensor noise (m)</span><span id="sensorVal">0.15</span></label>
     <input id="sensor" type="range" min="0.05" max="0.50" step="0.01" value="0.15" style="width:100%;">
   </div>
+  <div style="margin-top:12px;font-size:13px;font-weight:600;">Scoreboard</div>
+  <div id="scoreErr" style="margin-top:4px;font-size:13px;color:var(--hatch-widget-muted);"></div>
+  <div id="scoreN" style="font-size:13px;color:var(--hatch-widget-muted);"></div>
+  <div id="scoreRec" style="font-size:13px;color:var(--hatch-widget-muted);"></div>
   <div style="margin-top:12px;font-size:13px;font-weight:600;">Simple MCL (KISS)</div>
   <canvas id="kissCanvas" width="420" height="420" style="width:100%;aspect-ratio:1/1;display:block;border:1px solid var(--hatch-widget-border);border-radius:10px;background:var(--hatch-widget-surface-muted);margin-top:6px;"></canvas>
   <div id="kissStats" style="margin-top:6px;font-size:13px;color:var(--hatch-widget-muted);"></div>
@@ -75,6 +79,8 @@ body{margin:0;padding:16px;background:var(--hatch-widget-bg);font-family:system-
   var ALPHA_SLOW = 0.02, ALPHA_FAST = 0.2;
   var truePose = {x:1.5, y:2, th:0};
   var wpIndex = 1, steps = 0;
+  var trackErrA = 0, trackErrB = 0, meanNA = 0, meanNB = 0, trackSteps = 0;
+  var kidnapAt = null, recA = null, recB = null;
   var running = false, timer = null;
   var kissN = 500, maxN = 1500, motionNoise = 0.08, sensorNoise = 0.15;
 
@@ -273,6 +279,13 @@ body{margin:0;padding:16px;background:var(--hatch-widget-bg);font-family:system-
     kissStep(m, z);
     amclStep(m, z);
     steps++;
+    trackErrA += kiss.err; trackErrB += amcl.err;
+    meanNA += kiss.particles.length; meanNB += amcl.particles.length;
+    trackSteps++;
+    if (kidnapAt !== null){
+      if (recA === null && kiss.err < 0.5) recA = steps - kidnapAt;
+      if (recB === null && amcl.err < 0.5) recB = steps - kidnapAt;
+    }
     draw();
     updateStats();
   }
@@ -281,12 +294,15 @@ body{margin:0;padding:16px;background:var(--hatch-widget-bg);font-family:system-
     var p = randomFreePose(0.4);
     for (var t = 0; t < 200 && Math.hypot(p.x - old.x, p.y - old.y) < 4; t++) p = randomFreePose(0.4);
     truePose = p;
+    kidnapAt = steps; recA = null; recB = null;
     draw();
     updateStats();
   }
   function init(){
     truePose = {x:1.5, y:2, th:0};
     wpIndex = 1; steps = 0;
+    trackErrA = 0; trackErrB = 0; meanNA = 0; meanNB = 0; trackSteps = 0;
+    kidnapAt = null; recA = null; recB = null;
     kissInit();
     amclInit();
     draw();
@@ -347,6 +363,18 @@ body{margin:0;padding:16px;background:var(--hatch-widget-bg);font-family:system-
       'Step ' + steps + ' · Particles ' + amcl.particles.length +
       ' · Neff ' + Math.round(amcl.neff) +
       ' · Error ' + amcl.err.toFixed(2) + ' m · Spread ' + amcl.spread.toFixed(2) + ' m · Inject ' + Math.round(amcl.injectFrac * 100) + '%';
+    var n = Math.max(1, trackSteps);
+    document.getElementById('scoreErr').textContent =
+      'Tracking error (mean): Simple ' + (trackErrA / n).toFixed(2) + ' m · AMCL ' + (trackErrB / n).toFixed(2) + ' m';
+    document.getElementById('scoreN').textContent =
+      'Particles (mean): Simple ' + Math.round(meanNA / n) + ' · AMCL ' + Math.round(meanNB / n);
+    var recText = 'Recovery after kidnap: ';
+    if (kidnapAt === null) recText += 'press Kidnap to test';
+    else {
+      recText += 'Simple ' + (recA === null ? 'not recovered (' + (steps - kidnapAt) + ' steps)' : recA + ' steps');
+      recText += ' · AMCL ' + (recB === null ? 'not recovered (' + (steps - kidnapAt) + ' steps)' : recB + ' steps');
+    }
+    document.getElementById('scoreRec').textContent = recText;
   }
   document.getElementById('stepBtn').addEventListener('click', step);
   document.getElementById('kidnapBtn').addEventListener('click', kidnap);
@@ -379,7 +407,10 @@ body{margin:0;padding:16px;background:var(--hatch-widget-bg);font-family:system-
   window.__contrast = function(){
     return {steps: steps,
       a: {n: kiss.particles.length, neff: kiss.neff, err: kiss.err, spread: kiss.spread},
-      b: {n: amcl.particles.length, neff: amcl.neff, err: amcl.err, spread: amcl.spread, inj: amcl.injectFrac}};
+      b: {n: amcl.particles.length, neff: amcl.neff, err: amcl.err, spread: amcl.spread, inj: amcl.injectFrac},
+      score: {trackErrA: trackErrA / Math.max(1, trackSteps), trackErrB: trackErrB / Math.max(1, trackSteps),
+              meanNA: meanNA / Math.max(1, trackSteps), meanNB: meanNB / Math.max(1, trackSteps),
+              recA: recA, recB: recB}};
   };
   window.__cStep = step;
   window.__cKidnap = kidnap;
